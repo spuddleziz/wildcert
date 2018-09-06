@@ -1,0 +1,34 @@
+{
+  "domains": [""],
+  "email": "",
+  "expiryThreshold": 5,
+  "greenlock": {
+    "production": true,
+    "rsaKeySize": 2048,
+    "store": {
+      "plugin": "le-store-certbot",
+      "config": {
+        "debug": false,
+        "configDir": "/etc/letsencrypt"
+      }
+    },
+    "challenges": {
+      "dns-01": "wildcert"
+    },
+    "debug": false
+  },
+  "dns": {
+    "plugin": "godaddy",
+    "config": {
+      "apikey": "",
+      "secret": ""
+    }
+  },
+  "server": {
+    "plugin": "haproxy",
+    "config": {
+      "certpath": "",
+      "reload": true
+    }
+  }
+}
