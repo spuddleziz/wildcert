@@ -1,7 +1,7 @@
 {
-  "name": "godaddy-wildcert",
-  "version": "1.0.0",
-  "description": "",
+  "name": "wildcert",
+  "version": "0.1.1",
+  "description": "Wildcert is a wrapper for Greenlock (JS Letsencrypt/ACME client) that supports fully automated wildcard certificate requests using plugins that will automatically update the DNS challenges. Only supports GoDaddy at this time",
   "bin": {
     "wildcert": "./bin/wildcert.js"
   },
