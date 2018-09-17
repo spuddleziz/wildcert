@@ -33,7 +33,8 @@ Configuration Files
 
 ```
 {
-  "domains": ["*.example.com", "*.foo.com"], //request multiple wilcard certificates in one request on one certificate. 
+  "domains": ["*.example.com", "*.foo.com"], 
+  //request multiple wilcard certificates in one request on one certificate. 
   //Both domains must be managed by the same DNS provider.
   
   "email": "someone@domain.com", //email used for renewal emails sent from LetsEncrypt
