@@ -1,31 +1,37 @@
-#WildCert
+WildCert
+========
 
 WildCert is a wrapper for [Greenlock](https://git.coolaj86.com/coolaj86/greenlock.js) that supports the automatic requesting of wilcard certificates from LetsEncrypt by automatically updating DNS and using the DNS authorisation challenge.
 
-##Prerequisites
+Prerequisites
+=============
 
 - Node.JS v8.x or above with NPM
 - Only Linux is supported at this time. Not tested on MacOS/BSD
 
-##Installation
+Installation
+============
 
 To install WildCert simply run the following command on your server:
 
 `$ sudo npm install -g wildcert`
 
-##DNS Plugins
+DNS Plugins
+===========
 
 At the moment only GoDaddy is supported for automatic wildcard certificate generation.
 
-##Server Plugins
+Server Plugins
+==============
 
 After a successful  certificate gernation/renewal WildCert can reload the web server for you.
 
 At the moment only HaProxy is supported support for Nginx and Apache is planned. 
 
-##Configuration Files
+Configuration Files
+===================
 
-```json
+```
 {
   "domains": ["*.example.com", "*.foo.com"], //request multiple wilcard certificates in one request on one certificate. 
   //Both domains must be managed by the same DNS provider.
@@ -88,7 +94,8 @@ At the moment only HaProxy is supported support for Nginx and Apache is planned.
 ```
 
 
-##Using WildCert
+Using WildCert
+==============
 
 1. Create a configuration file and save it somewhere. E.g. /etc/wildcert/example.com.json
 2. Run `$ sudo wildcert /etc/wildcert/example.com.json` to request your certificate.
@@ -104,7 +111,8 @@ Now wildcert will run daily and check to see if the threshold set in the configu
 
 It is possible to have multiple WildCert configuration files, if you do just add all the renewals you wish to happen to this cron file.
 
-##LICENSE
+LICENSE
+=======
 
 Please see package.json for included modules and see NPM or the Source for the Licenses for those included modules.
 
