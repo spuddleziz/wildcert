@@ -1,0 +1,29 @@
+{
+    "domains": ["*.firebasealpha.co"],     
+    "email": "someone@domain.com",
+    "expiryThreshold": 5,
+    "greenlock": {
+      "production": false,
+      "rsaKeySize": 2048,
+      "store": {
+        "plugin": "le-store-certbot",
+        "config": {
+          "debug": false,
+          "configDir": "/etc/letsencrypt"
+        }
+      },
+      "challenges": {
+        "dns-01": "wildcert"
+      },
+      "debug": false
+    },
+    "dns": {
+      "plugin": "ovh", 
+      "config": {
+          "appKey": "Tu8yVk19AT03BJ7c", 
+          "appSecret": "oU9SWtNi0UCGHtVSwvCIemj9mZmrxFNq",
+          "consumerKey": "STp0sWB9SjRbLpnm7ftQLQuUA7QJ9tks",
+          "endpoint": "ovh-eu"
+      }
+    }
+  }

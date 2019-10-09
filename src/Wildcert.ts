@@ -150,7 +150,7 @@ export class Wildcert {
           return Promise.reject(new Error(`The requested DNS plugin ${dnsConf.plugin} doesn't exist or is in the incorrect format.`));
 
         }
-
+        console.log("Valid plugin class");
         this._dnsPluginInstance = pluginInstance;
 
         this._dnsPluginEnabled = true;
