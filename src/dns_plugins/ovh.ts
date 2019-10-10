@@ -8,12 +8,12 @@ import {
     validateDNSRecordType
 } from "./utils";
 import * as Promise from "bluebird";
+import { 
+    DomainMap,
+    OVHError,
+    OVHZoneRecord
+ } from "../types";
 
-class OVHError
-{
-    public message:string;
-    public error: string;
-}
 
 export default class OVHDNSPlugin implements IDNSPlugin
 {
@@ -51,16 +51,33 @@ export default class OVHDNSPlugin implements IDNSPlugin
         return this._config;
     }
 
-    set(args: any, domain: string, challenge: string, keyAuthorisation: string, cb: string) {
+    set(args: any, domain: string, challenge: string, keyAuthorisation: string, cb: any) {
+        let isRoot = false;
         let foundDomain = getDomainAndNameFromMap(this._domainMap, domain);
-        console.log(`Found domain: ${foundDomain}`);        
+        if(!foundDomain || !foundDomain.domain || !foundDomain.name )
+        {
+            return cb(new Error(`The requested domain ${domain} is not available in the ovh instance configured`));
+        }
+        console.log(`Looking for ${domain} and found ${foundDomain.name} with domain ${foundDomain.domain}`);
+
+        let acmePath = "";
+        if (foundDomain.name === foundDomain.domain) {
+            acmePath = ACME_RECORD_PREFIX;
+            isRoot = true;
+        } else {
+            acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name;
+        }
+
+        let keyAuthDigest = makeChallengeKeyAuthDigest(keyAuthorisation);
+        this.setRecord(foundDomain.domain,"TXT",acmePath,keyAuthDigest,600)
+        .then();
     }
 
-    get(args: any, domain: any, challenge: any, cb: any) {
+    get(args: any, domain: string, challenge: any, cb: any) {
 
     }
 
-    remove(args: any, domain: any, challenge: any, cb: any) {
+    remove(args: any, domain: string, challenge: any, cb: any) {
         this._ovh.request('POST','/domain', (err,domains) => {
             console.log(domains);
         });
@@ -75,17 +92,35 @@ export default class OVHDNSPlugin implements IDNSPlugin
             console.log(domains);
         });
     }
-    setRecord(domain: any, type: any, name: any, value: any, ttl: any) : Promise<any> {
-        return this._ovh.request('POST','/domain', (err,domains) => {
-            console.log(domains);
+    setRecord(domain: string, type: string, name: string, value: string, ttl: number) : Promise<any> {
+        return this._ovh.requestPromised('POST',`/domain/zone/${domain}/record`,{
+            zoneName: domain,
+            fieldType: type,
+            subDomain: name,
+            target: value,
+            ttl: ttl
+        })
+        .catch((err:OVHError) => {
+            return Promise.reject(`[ovh] Error: ${err.message}`);
+        })
+        .then((record: OVHZoneRecord) => {
+            //Refresh call just applies the edited zone, returns void
+            return this._ovh.requestPromised('POST',`/domain/zone/${domain}/refresh`,{
+                zoneName: domain
+            })
+            .catch((err:OVHError) => {
+                return Promise.reject(`[ovh] Error: ${err.message}`);
+            })
         });
     }
-    getRecord(domain: any, type: any, name: any) : Promise<any>{
-        return this._ovh.request('POST','/domain', (err,domains) => {
-            console.log(domains);
-        });
+    getRecord(domain: string, type: string, name: string) : Promise<any>{
+        return this._ovh.requestPromised('GET',`/domain/zone/${domain}/record`,{
+            zoneName: domain,
+            fieldType: type,
+            subdomain: name
+        })
     }
-    removeRecord(domain: any, type: any, name: any): Promise<any> {
+    removeRecord(domain: string, type: any, name: any): Promise<any> {
         return this._ovh.request('POST','/domain', (err,domains) => {
             console.log(domains);
         });

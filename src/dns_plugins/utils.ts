@@ -1,6 +1,7 @@
 import * as dot from "dot-object";
 import * as Promise from "bluebird";
 import {Resolver} from "dns";
+import { DomainMap } from "../types";
 
 
 export const ACME_RECORD_PREFIX = "_acme-challenge";
@@ -37,7 +38,7 @@ export function reverseDomain(domain:string):string {
 
 }
 
-export function putDomainInMap(domainMap, domainToAdd) {
+export function putDomainInMap(domainMap: DomainMap, domainToAdd: string): void {
 
   let rdom = reverseDomain(domainToAdd);
 
@@ -50,7 +51,7 @@ export interface FoundDomainAndName {
   name:string
 }
 
-export function getDomainAndNameFromMap(domainMap, requestDomain):FoundDomainAndName {
+export function getDomainAndNameFromMap(domainMap:DomainMap , requestDomain:string):FoundDomainAndName {
 
   //recursively step up the domain and look in the map for it...
 
