@@ -171,7 +171,7 @@ export class Wildcert {
 
             if ((!dnsConf.ip4List && !dnsConf.ip6List) || (!Array.isArray(dnsConf.ip4List) && !Array.isArray(dnsConf.ip6List)) || (dnsConf.ip4List.length === 0 && dnsConf.ip6List.length === 0)) {
 
-              console.log("Cannot update ips for domains if no ips have been set, either V4 or V4. Continuing, but if using an HTTP-01 challenge this will liekyl fail if the A or AAAA records aren't pointing to this host.");
+              console.log("Cannot update ips for domains if no ips have been set, either V4 or V6. Continuing, but if using an HTTP-01 challenge this will likely fail if the A or AAAA records aren't pointing to this host.");
 
               return;
 
