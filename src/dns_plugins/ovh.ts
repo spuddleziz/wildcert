@@ -77,8 +77,6 @@ export default class OVHDNSPlugin implements IDNSPlugin
             return this.getRecord(foundDomain.domain,"NS",foundDomain.name)
                 .then((dnsList:OVHZoneRecord[]) =>{
                     console.log(dnsList);
-                    //let nsList = _.map(nameservers, "data");
-                    //return lookupIPs(nsList)
                     cb(null)
                 })
                 .catch((err) => {
@@ -182,9 +180,10 @@ export default class OVHDNSPlugin implements IDNSPlugin
 
                 case 0: return Promise.reject(`[ovh] ${type} record named ${name} is not listed on ${domain}`);
                 default: 
+                    console.log("Before multi-record promise: ",idlist);
                     return Promise.all(idlist.map((id) => this._ovh.requestPromised('GET',`/domain/zone/${domain}/record/${id}`)))
                         .then((results:any) => {
-                            console.log(results);
+                            console.log("During return records: ",results);
                             return results;
                         });
                 return ;
@@ -204,6 +203,7 @@ export default class OVHDNSPlugin implements IDNSPlugin
                         let record = records[0];
                         return this._ovh.requestPromise('DELETE',`/domain/zone/${record.zone}/record/${record.id}`)
                             .then(() => {
+                                console.log(`[ovh] Removed ${name} ${type} record from ${domain}`)
                                 return this.applyDNSChanges;
                             })
                             .catch((err:OVHError) => {
