@@ -54,7 +54,7 @@ export default class OVHDNSPlugin implements IDNSPlugin
         return this._config;
     }
 
-    set(args: any, domain: string, challenge: string, keyAuthorisation: string, cb: any) {
+    set(args: any, domain: string, challenge: string, keyAuthorisation: string, cb: (err?:Error) => {}) {
         let isRoot = false;
         let foundDomain = getDomainAndNameFromMap(this._domainMap, domain);
         if(!foundDomain || !foundDomain.domain || !foundDomain.name )
@@ -74,15 +74,49 @@ export default class OVHDNSPlugin implements IDNSPlugin
         let keyAuthDigest = makeChallengeKeyAuthDigest(keyAuthorisation);
         this.setRecord(foundDomain.domain,"TXT",acmePath,keyAuthDigest,600)
         .then(() => {
-            return this.getRecord(foundDomain.domain,"NS",foundDomain.name)
-                .then((dnsList:OVHZoneRecord[]) =>{
-                    console.log(dnsList);
-                    cb(null)
-                })
-                .catch((err) => {
-                    return Promise.reject(`[ovh] An error occurred whilst getting the nameserver records on ${foundDomain.domain}`);
-                })
-            
+            //We need to makesure the TXT record has populated
+            //To do this, we need to find the authorative NS for the domain
+            //This could be sub.sub.domain.tld, sub.domain.tld etc
+            console.log("[ovh] Query for NS records")
+            let domComps = domain.split('.');
+            let minDomLen = domComps.length - 2; //Make sure we don't query for anything below domain.tld
+            let subdomainQueryArr:string[] = [];
+            for(var i= 0; i <= minDomLen; i++)
+            {
+                //For OVH,we need to query the domain using the domain separate from the sub
+                //Therefore, this creates a list of subdomain components, e.g. "blah.sub", "blah" and "" (denoting @)
+                subdomainQueryArr.push(domComps.slice(i,minDomLen - i).join('.'));                 
+            }
+
+            return new Promise((outerRes,outerRej) => {
+                let found = false;
+                Promise.each(subdomainQueryArr,(curSubdomain) => {
+                    if(found) return //Flow control, ignore anything but the first found NS result which will be best authorative
+                    else
+                    {
+                        this.getRecord(foundDomain.domain,"NS",curSubdomain)
+                        .then((records:OVHZoneRecord[]) => {
+                            console.log(`[ovh] Info: Queried "${curSubdomain}" on ${foundDomain.domain} and found`,records);
+                            found = true; //No more queries
+                            outerRes(records);
+                        })
+                        .catch((err:OVHError) => {
+                            console.log(`[ovh] Info: Queried "${curSubdomain}" on ${foundDomain.domain} and received an error`,err);
+                            return; //Don't require catch, kind of expected
+                        });
+                    }
+                });
+                if(!found) outerRej(new Error(`Failed to find authorative NS for ${domain}`));
+            })
+            .then((records:OVHZoneRecord[]) => {
+                console.log("[ovh] Most Authorative",records);
+            })
+            .catch(() => {
+                console.log(`[ovh] Unable to find NS servers for ${domain}`);
+            });
+        })
+        .then(() =>{
+            cb();
         })
         .catch((err) => cb(err));
     }
@@ -91,13 +125,12 @@ export default class OVHDNSPlugin implements IDNSPlugin
         //Empty on the godaddy plugin
     }
 
-    remove(args: any, domain: string, challenge: any, cb: any) {
+    remove(args: any, domain: string, challenge: any, cb: (err?:Error) =>{} ) {
         console.log(`Removing record from ${domain} on OVH`);
         let foundDomain = getDomainAndNameFromMap(this._domainMap, domain);
         if (!foundDomain || !foundDomain.name || !foundDomain.domain) {
             return cb(new Error(`The requested domain ${domain} is not available in the godaddy instance configured`));
         }
-
         let acmePath = "";
         if (foundDomain.name === foundDomain.domain) {
             acmePath = ACME_RECORD_PREFIX;
@@ -105,8 +138,8 @@ export default class OVHDNSPlugin implements IDNSPlugin
             acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name;
         }
         this.removeRecord(domain,"TXT",acmePath)
-        .then(cb())
-        .catch((err:string) => cb(err));
+        .then(() => cb())
+        .catch((err:any) => cb(err));
     }
 
     setIPv4(host: string, ips: string[]):Promise<any> {
@@ -168,7 +201,7 @@ export default class OVHDNSPlugin implements IDNSPlugin
     getRecord(domain: string, type: string, name: string) : Promise<OVHZoneRecord[]>{
         return this._ovh.requestPromised('GET',`/domain/zone/${domain}/record`,{
             fieldType: type,
-            subdomain: name
+            subDomain: name
         })
         .then((idlist :number[]) => {
             switch(idlist.length)
@@ -180,17 +213,16 @@ export default class OVHDNSPlugin implements IDNSPlugin
 
                 case 0: return Promise.reject(`[ovh] ${type} record named ${name} is not listed on ${domain}`);
                 default: 
-                    console.log("Before multi-record promise: ",idlist);
                     return Promise.all(idlist.map((id) => this._ovh.requestPromised('GET',`/domain/zone/${domain}/record/${id}`)))
                         .then((results:any) => {
-                            console.log("During return records: ",results);
+                            console.log(`[ovh] Qeried zone record ids ${idlist} and received`,results);
                             return results;
                         });
                 return ;
             }
         })
         .catch((err:OVHError) => {
-            return Promise.reject(`[ovh] Error: ${err.message}`);
+            return Promise.reject(`[ovh] Error while getting DNS Zone`,err);
         })
     }
 
@@ -225,7 +257,7 @@ export default class OVHDNSPlugin implements IDNSPlugin
         return this._ovh.requestPromised('POST',`/domain/zone/${domain}/refresh`)
         .then((res) => {
             console.log(`[ovh] DNS changes saved`);
-            return Promise.resolve();
+            return;
         })
         .catch((err:OVHError) => {
             return Promise.reject(`[ovh] Error: ${err.message}`);

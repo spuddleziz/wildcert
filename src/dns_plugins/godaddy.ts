@@ -159,7 +159,7 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
         if (!nameservers || !Array.isArray(nameservers) || nameservers.length === 0) {
 
-          console.log("Cant find Authoritative Nameservers so waiting for the default timeout.");
+          console.log("Can't find Authoritative Nameservers so waiting for the default timeout.");
 
           return Promise.delay(10 * 60 * 1000);
 
@@ -173,7 +173,7 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
           if (!nsIPs || !Array.isArray(nsIPs) || nsIPs.length === 0) {
 
-            console.log("Cant lookup IPs of Authoritative Nameservers so waiting for the default timeout.");
+            console.log("Can't lookup IPs of Authoritative Nameservers so waiting for the default timeout.");
 
             return Promise.delay(10 * 60 * 1000);
 

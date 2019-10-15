@@ -330,7 +330,7 @@ export class Wildcert {
 
       }).catch((ex) => {
 
-        //console.error(ex);
+        console.error(ex);
 
       });
 
