@@ -101,6 +101,12 @@ const DNSPluginConfigValidators = {
   "godaddy": Joi.object().keys({
     "apikey": Joi.string().token().required(),
     "secret": Joi.string().token().required()
+  }),
+  'ovh': Joi.object().keys({
+    'appKey': Joi.string().token().required(),
+    'appSecret': Joi.string().token().required(),
+    'consumerKey': Joi.string().token().required(),
+    'endpoint': Joi.string().required()
   })
 
 };

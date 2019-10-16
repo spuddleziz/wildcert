@@ -42,15 +42,57 @@ function getDomainAndNameFromMap(domainMap, requestDomain) {
         builtDom += (i < domSplitLen ? "." : "") + domSplit[i];
         picked = domainMap[builtDom];
         if (picked && typeof picked === "string") {
-            return {
+            picked = picked.toLowerCase();
+            requestDomain = requestDomain.toLowerCase();
+            var isRoot = false;
+            var name_1 = "";
+            if (picked === requestDomain) {
+                isRoot = true;
+            }
+            else {
+                name_1 = requestDomain.replace("." + picked, "");
+            }
+            return getAcmePathForDomain({
                 domain: picked,
-                name: requestDomain.replace("." + picked, "")
-            };
+                name: name_1,
+                isRoot: isRoot,
+                acmePath: "",
+                isWildcard: false
+            }, requestDomain);
         }
     }
     return null;
 }
 exports.getDomainAndNameFromMap = getDomainAndNameFromMap;
+function getAcmePathForDomain(foundDomain, requestDomain) {
+    if (foundDomain.isRoot && (!foundDomain.name || foundDomain.name === "")) {
+        foundDomain.acmePath = exports.ACME_RECORD_PREFIX;
+    }
+    else {
+        //handle the wildcard...
+        if (foundDomain.name[0] === "*") {
+            if (foundDomain.name.length > 1 && foundDomain.name[1] === ".") {
+                //fine
+                foundDomain.isWildcard = true;
+                foundDomain.acmePath = exports.ACME_RECORD_PREFIX + "." + foundDomain.name.slice(2);
+            }
+            else if (foundDomain.name.length === 1) {
+                //fine
+                foundDomain.isWildcard = true;
+                foundDomain.acmePath = exports.ACME_RECORD_PREFIX;
+                foundDomain.isRoot = true;
+            }
+            else {
+                //throw
+            }
+        }
+        else {
+            //standard
+            foundDomain.acmePath = exports.ACME_RECORD_PREFIX + "." + foundDomain.name;
+        }
+    }
+    return foundDomain;
+}
 function processLoop(mainFn, compareFn, delay) {
     return new Promise(function (resolve, reject) {
         function next() {
@@ -96,7 +138,12 @@ function checkAuthoritativeServerDNSRecord(dnsServers, recordType, hostname, exp
                         return [];
                     }
                     if (res && Array.isArray(res) && res.length > 0) {
-                        return resolve(res[0]);
+                        //It's possible that there could have multiple records returned
+                        for (var i = 0; i < res.length; i++) {
+                            if (res[i] == expectedValue)
+                                return resolve(res[i]);
+                        }
+                        return reject(new Error("Couldn't find expected value"));
                     }
                     return [];
                 });
@@ -106,6 +153,7 @@ function checkAuthoritativeServerDNSRecord(dnsServers, recordType, hostname, exp
             return doAsyncResolve(hostname, recordType);
         }, function (results) {
             //look at the results and see if the value is correct
+            console.log("[resolver] Returned these values", results);
             if (new Date().getTime() >= timeoutTime) {
                 console.log("Timeout occurred waiting for DNS values to match expected.");
                 return true;

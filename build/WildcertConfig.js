@@ -55,6 +55,8 @@ var WildcertConfig = /** @class */ (function () {
             robj.server = STAGING_ACME_ADDRESS;
         }
         delete robj.production;
+        robj.skipDryRun = true;
+        robj.skipChallengeTest = true;
         //now set the renewal points...
         robj.renewWithin = this.getRenewWithin();
         robj.renewBy = this.getRenewBy();

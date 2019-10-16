@@ -1,0 +1,62 @@
+{
+    "domains": ["*.example.com"], 
+    //request multiple wilcard certificates in one request on one certificate. 
+    //Both domains must be managed by the same DNS provider.
+    
+    "email": "someone@domain.com", //email used for renewal emails sent from LetsEncrypt
+    
+    "expiryThreshold": 5, //the number of days before actual certificate expiry when the renewal should occur
+    
+    //  GREENLOCK CONFIGURATION
+    "greenlock": {
+    
+      "production": true, //set to false to use the staging API for testing.
+      
+      "rsaKeySize": 2048, //keysize for certificate must be 2048 or larger and a multiple of 512 e.g 2048, 4096, 2560
+      
+      // The Greenlock store configuration... le-store-certbot is installed for you but any store plugin can be used. 
+      //Search NPM for le-store for other available plugins.
+      "store": { 
+      
+        "plugin": "le-store-certbot", //the node.js plugin to use...
+      
+        // PLUGIN CONFIGURATION
+        "config": {
+          "debug": false,
+          "configDir": "/etc/letsencrypt"   //the directory to store the LetsEncrypt data
+        }
+      
+      },
+      
+      //When requesting wildcard certificates one can only use the DNS challenge. 
+      //Wildcert work by intercepting the LetsEncrypt response and updating DNS using the configured plugin.
+      //Search NPM for le-challenge to use other plugins for any type of challenge
+      "challenges": {
+        "dns-01": "wildcert"  //Setting this to wildcert allows WildCert to intercept the DNS challenge response
+      },
+      "debug": false
+      
+    },
+    "dns": {
+    "plugin": "ovh", 
+        "config": {
+            "appkey": "jEZbdhjRj23M6JOg", 
+            "appSecret": "o9rLoK7iZoMl8KEw4NRuomTIfsAObkq0",
+            "endpoint": "ovh-eu"
+            //consumerKey:
+        }
+    },
+    "server": {
+      "plugin": "haproxy",  //The WildCert webserver management plugin to use 
+      "config": {
+        "certpath": "/etc/haproxy/certs/fullchain.pem", 
+        //haproxy requires a full chain style certificate file. 
+        // This is the path wheere that key will be written to.
+        
+        "reload": true 
+        //Setting this to true will issue a systemctl reload haproxy.service
+        //    after the certificate has been successfuly written to the above path.
+      
+      }
+    }
+  }

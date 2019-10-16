@@ -1,6 +1,7 @@
 import * as dot from "dot-object";
 import * as Promise from "bluebird";
 import {Resolver} from "dns";
+import { DomainMap } from "../types";
 
 
 export const ACME_RECORD_PREFIX = "_acme-challenge";
@@ -37,7 +38,7 @@ export function reverseDomain(domain:string):string {
 
 }
 
-export function putDomainInMap(domainMap, domainToAdd) {
+export function putDomainInMap(domainMap: DomainMap, domainToAdd: string): void {
 
   let rdom = reverseDomain(domainToAdd);
 
@@ -48,9 +49,12 @@ export function putDomainInMap(domainMap, domainToAdd) {
 export interface FoundDomainAndName {
   domain:string
   name:string
+  isRoot:boolean
+  isWildcard:boolean
+  acmePath:string
 }
 
-export function getDomainAndNameFromMap(domainMap, requestDomain):FoundDomainAndName {
+export function getDomainAndNameFromMap(domainMap:DomainMap , requestDomain:string):FoundDomainAndName {
 
   //recursively step up the domain and look in the map for it...
 
@@ -70,18 +74,62 @@ export function getDomainAndNameFromMap(domainMap, requestDomain):FoundDomainAnd
 
     if (picked && typeof picked === "string") {
 
-      return {
+      picked = picked.toLowerCase();
+      requestDomain = requestDomain.toLowerCase();
+      let isRoot = false;
+      let name = "";
+      if (picked === requestDomain) {
+        isRoot = true;
+      } else {
+        name = requestDomain.replace("." + picked, "");
+      }
+
+      return getAcmePathForDomain({
 
         domain: picked,
-        name : requestDomain.replace("." + picked, "")
+        name : name,
+        isRoot : isRoot,
+        acmePath : "",
+        isWildcard : false
 
-      }
+      }, requestDomain);
 
     }
 
   }
 
   return null;
+
+}
+
+function getAcmePathForDomain(foundDomain:FoundDomainAndName, requestDomain:string):FoundDomainAndName {
+
+  if (foundDomain.isRoot && (!foundDomain.name || foundDomain.name === "")) {
+    foundDomain.acmePath = ACME_RECORD_PREFIX;
+  } else {
+
+    //handle the wildcard...
+    if (foundDomain.name[0] === "*") {
+      if (foundDomain.name.length > 1 && foundDomain.name[1] === ".") {
+        //fine
+        foundDomain.isWildcard = true;
+        foundDomain.acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name.slice(2);
+      } else if (foundDomain.name.length === 1) {
+        //fine
+        foundDomain.isWildcard = true;
+        foundDomain.acmePath = ACME_RECORD_PREFIX;
+        foundDomain.isRoot = true;
+      } else {
+        //throw
+      }
+    } else {
+      //standard
+      foundDomain.acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name;
+    }
+
+  }
+
+  return foundDomain;
 
 }
 
@@ -145,7 +193,12 @@ export function checkAuthoritativeServerDNSRecord(dnsServers:string[], recordTyp
 
           if (res && Array.isArray(res) && res.length > 0) {
 
-            return resolve(res[0]);
+            //It's possible that there could have multiple records returned
+            for(var i = 0; i < res.length; i++)
+            {
+              if(res[i] == expectedValue) return resolve(res[i]);
+            }
+            return reject(new Error("Couldn't find expected value"))
 
           }
 
@@ -159,11 +212,12 @@ export function checkAuthoritativeServerDNSRecord(dnsServers:string[], recordTyp
 
     return processLoop(() => {
 
-      return doAsyncResolve(hostname, recordType);
+        return doAsyncResolve(hostname, recordType);
 
     }, (results) => {
 
       //look at the results and see if the value is correct
+      console.log(`[resolver] Returned these values`,results);
 
       if (new Date().getTime() >= timeoutTime) {
 

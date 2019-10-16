@@ -62,8 +62,6 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
   remove(args, domain, challenge, cb) {
 
-    let isRoot = false;
-
     let foundDomain = getDomainAndNameFromMap(this._domainMap, domain);
 
     if (!foundDomain || !foundDomain.name || !foundDomain.domain) {
@@ -76,21 +74,7 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
     console.log(`Looking for ${domain} and found ${foundDomain.name} with domain ${foundDomain.domain}`);
 
-    let acmePath = "";
-
-    if (foundDomain.name === foundDomain.domain) {
-
-      acmePath = ACME_RECORD_PREFIX;
-
-      isRoot = true;
-
-    } else {
-
-      acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name;
-
-    }
-
-    this.removeRecord(foundDomain.domain, "TXT", acmePath).then((resp) => {
+    this.removeRecord(foundDomain.domain, "TXT", foundDomain.acmePath).then((resp) => {
 
       //do something with response?
 
@@ -110,8 +94,6 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
     //get base domain...
 
-    let isRoot = false;
-
     let foundDomain = getDomainAndNameFromMap(this._domainMap, domain);
 
     if (!foundDomain || !foundDomain.name || !foundDomain.domain) {
@@ -120,23 +102,16 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
     }
 
+    if (foundDomain.isWildcard) {
+      args.challenge.wildcard = true;
+    } else {
+      args.challenge.wildcard = false;
+    }
+    args.acmePrefix = foundDomain.acmePath + "." + foundDomain.domain;
+
     //console.log(args, domain, challenge)
 
     console.log(`Looking for ${domain} and found ${foundDomain.name} with domain ${foundDomain.domain}`);
-
-    let acmePath = "";
-
-    if (foundDomain.name === foundDomain.domain) {
-
-      acmePath = ACME_RECORD_PREFIX;
-
-      isRoot = true;
-
-    } else {
-
-      acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name;
-
-    }
 
     //build the digest auth key
 
@@ -146,10 +121,10 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
       apiKey: this._config.apikey,
       secret: this._config.secret,
       domain: foundDomain.domain,
-      name : (isRoot === true ? "@" : foundDomain.name)
+      name : (foundDomain.isRoot === true ? "@" : foundDomain.name)
     }).then((nameservers) => {
 
-      return this.setRecord(foundDomain.domain, "TXT", acmePath, keyAuthDigest, 600).then(() => {
+      return this.setRecord(foundDomain.domain, "TXT", foundDomain.acmePath, keyAuthDigest, 600).then(() => {
 
         console.log("Record set. Waiting 5 seconds before checking propagation");
 
@@ -159,7 +134,7 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
         if (!nameservers || !Array.isArray(nameservers) || nameservers.length === 0) {
 
-          console.log("Cant find Authoritative Nameservers so waiting for the default timeout.");
+          console.log("Can't find Authoritative Nameservers so waiting for the default timeout.");
 
           return Promise.delay(10 * 60 * 1000);
 
@@ -173,7 +148,7 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
           if (!nsIPs || !Array.isArray(nsIPs) || nsIPs.length === 0) {
 
-            console.log("Cant lookup IPs of Authoritative Nameservers so waiting for the default timeout.");
+            console.log("Can't lookup IPs of Authoritative Nameservers so waiting for the default timeout.");
 
             return Promise.delay(10 * 60 * 1000);
 
@@ -181,7 +156,7 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
           console.log(`Waiting for DNS Propagation using authoritative nameservers: ${nsIPs.join(", ")}`);
 
-          return checkAuthoritativeServerDNSRecord(nsIPs, "TXT", acmePath + "." + foundDomain.domain, keyAuthDigest, 10 * 60 * 1000);
+          return checkAuthoritativeServerDNSRecord(nsIPs, "TXT", foundDomain.acmePath + "." + foundDomain.domain, keyAuthDigest, 10 * 60 * 1000);
 
         });
 
@@ -219,9 +194,31 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
     console.log(`Looking for ${host} and found ${foundDomain.name} with domain ${foundDomain.domain}`);
 
-    if (foundDomain.name === foundDomain.domain) {
+    if (foundDomain.isWildcard && foundDomain.isRoot) {
+      return Promise.props({
+        root: setMultipleGoDaddyRecords({
 
-      foundDomain.name = "@";
+          apiKey: this._config.apikey,
+          secret: this._config.secret,
+          domain: foundDomain.domain,
+          name : "@",
+          values: ips,
+          type: "A",
+          ttl: 600
+    
+        }),
+        wild: setMultipleGoDaddyRecords({
+
+          apiKey: this._config.apikey,
+          secret: this._config.secret,
+          domain: foundDomain.domain,
+          name : "*",
+          values: ips,
+          type: "A",
+          ttl: 600
+    
+        })
+      });
 
     }
 
@@ -230,7 +227,7 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
       apiKey: this._config.apikey,
       secret: this._config.secret,
       domain: foundDomain.domain,
-      name : foundDomain.name,
+      name : foundDomain.isRoot ? "@" : foundDomain.name,
       values: ips,
       type: "A",
       ttl: 600
@@ -253,10 +250,31 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
 
     console.log(`Looking for ${host} and found ${foundDomain.name} with domain ${foundDomain.domain}`);
 
-    if (foundDomain.name === foundDomain.domain) {
+    if (foundDomain.isRoot && foundDomain.isWildcard) {
+      return Promise.props({
+        root: setMultipleGoDaddyRecords({
 
-      foundDomain.name = "@";
+          apiKey: this._config.apikey,
+          secret: this._config.secret,
+          domain: foundDomain.domain,
+          name : "@",
+          values: ips,
+          type: "AAAA",
+          ttl: 600
+    
+        }),
+        wild: setMultipleGoDaddyRecords({
 
+          apiKey: this._config.apikey,
+          secret: this._config.secret,
+          domain: foundDomain.domain,
+          name : "*",
+          values: ips,
+          type: "AAAA",
+          ttl: 600
+    
+        })
+      });
     }
 
     return setMultipleGoDaddyRecords({
@@ -264,7 +282,7 @@ export default class GoDaddyDNSPlugin implements IDNSPlugin {
       apiKey: this._config.apikey,
       secret: this._config.secret,
       domain: foundDomain.domain,
-      name : foundDomain.name,
+      name : foundDomain.isRoot ? "@" : foundDomain.name,
       values: ips,
       type: "AAAA",
       ttl: 600

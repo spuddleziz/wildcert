@@ -29,22 +29,13 @@ var GoDaddyDNSPlugin = /** @class */ (function () {
     GoDaddyDNSPlugin.prototype.get = function (args, domain, challenge, cb) {
     };
     GoDaddyDNSPlugin.prototype.remove = function (args, domain, challenge, cb) {
-        var isRoot = false;
         var foundDomain = utils_1.getDomainAndNameFromMap(this._domainMap, domain);
         if (!foundDomain || !foundDomain.name || !foundDomain.domain) {
             return cb(new Error("The requested domain " + domain + " is not available in the godaddy instance configured"));
         }
         //console.log(args, domain, challenge)
         console.log("Looking for " + domain + " and found " + foundDomain.name + " with domain " + foundDomain.domain);
-        var acmePath = "";
-        if (foundDomain.name === foundDomain.domain) {
-            acmePath = utils_1.ACME_RECORD_PREFIX;
-            isRoot = true;
-        }
-        else {
-            acmePath = utils_1.ACME_RECORD_PREFIX + "." + foundDomain.name;
-        }
-        this.removeRecord(foundDomain.domain, "TXT", acmePath).then(function (resp) {
+        this.removeRecord(foundDomain.domain, "TXT", foundDomain.acmePath).then(function (resp) {
             //do something with response?
         }).then(function () {
             cb(null);
@@ -55,46 +46,44 @@ var GoDaddyDNSPlugin = /** @class */ (function () {
     GoDaddyDNSPlugin.prototype.set = function (args, domain, challenge, keyAuthorisation, cb) {
         //get base domain...
         var _this = this;
-        var isRoot = false;
         var foundDomain = utils_1.getDomainAndNameFromMap(this._domainMap, domain);
         if (!foundDomain || !foundDomain.name || !foundDomain.domain) {
             return cb(new Error("The requested domain " + domain + " is not available in the godaddy instance configured"));
         }
-        //console.log(args, domain, challenge)
-        console.log("Looking for " + domain + " and found " + foundDomain.name + " with domain " + foundDomain.domain);
-        var acmePath = "";
-        if (foundDomain.name === foundDomain.domain) {
-            acmePath = utils_1.ACME_RECORD_PREFIX;
-            isRoot = true;
+        if (foundDomain.isWildcard) {
+            args.challenge.wildcard = true;
         }
         else {
-            acmePath = utils_1.ACME_RECORD_PREFIX + "." + foundDomain.name;
+            args.challenge.wildcard = false;
         }
+        args.acmePrefix = foundDomain.acmePath + "." + foundDomain.domain;
+        //console.log(args, domain, challenge)
+        console.log("Looking for " + domain + " and found " + foundDomain.name + " with domain " + foundDomain.domain);
         //build the digest auth key
         var keyAuthDigest = utils_1.makeChallengeKeyAuthDigest(keyAuthorisation);
         getGoDaddyNSForDomain({
             apiKey: this._config.apikey,
             secret: this._config.secret,
             domain: foundDomain.domain,
-            name: (isRoot === true ? "@" : foundDomain.name)
+            name: (foundDomain.isRoot === true ? "@" : foundDomain.name)
         }).then(function (nameservers) {
-            return _this.setRecord(foundDomain.domain, "TXT", acmePath, keyAuthDigest, 600).then(function () {
+            return _this.setRecord(foundDomain.domain, "TXT", foundDomain.acmePath, keyAuthDigest, 600).then(function () {
                 console.log("Record set. Waiting 5 seconds before checking propagation");
                 return Promise.delay(5000);
             }).then(function () {
                 if (!nameservers || !Array.isArray(nameservers) || nameservers.length === 0) {
-                    console.log("Cant find Authoritative Nameservers so waiting for the default timeout.");
+                    console.log("Can't find Authoritative Nameservers so waiting for the default timeout.");
                     return Promise.delay(10 * 60 * 1000);
                 }
                 //lets resolve the nameserver addresses
                 var nsList = _.map(nameservers, "data");
                 return utils_1.lookupIPs(nsList).then(function (nsIPs) {
                     if (!nsIPs || !Array.isArray(nsIPs) || nsIPs.length === 0) {
-                        console.log("Cant lookup IPs of Authoritative Nameservers so waiting for the default timeout.");
+                        console.log("Can't lookup IPs of Authoritative Nameservers so waiting for the default timeout.");
                         return Promise.delay(10 * 60 * 1000);
                     }
                     console.log("Waiting for DNS Propagation using authoritative nameservers: " + nsIPs.join(", "));
-                    return utils_1.checkAuthoritativeServerDNSRecord(nsIPs, "TXT", acmePath + "." + foundDomain.domain, keyAuthDigest, 10 * 60 * 1000);
+                    return utils_1.checkAuthoritativeServerDNSRecord(nsIPs, "TXT", foundDomain.acmePath + "." + foundDomain.domain, keyAuthDigest, 10 * 60 * 1000);
                 });
             }).then(function () {
                 console.log("DNS Propagated waiting a further 5 seconds before proceeding.");
@@ -113,14 +102,33 @@ var GoDaddyDNSPlugin = /** @class */ (function () {
         }
         //console.log(args, domain, challenge)
         console.log("Looking for " + host + " and found " + foundDomain.name + " with domain " + foundDomain.domain);
-        if (foundDomain.name === foundDomain.domain) {
-            foundDomain.name = "@";
+        if (foundDomain.isWildcard && foundDomain.isRoot) {
+            return Promise.props({
+                root: setMultipleGoDaddyRecords({
+                    apiKey: this._config.apikey,
+                    secret: this._config.secret,
+                    domain: foundDomain.domain,
+                    name: "@",
+                    values: ips,
+                    type: "A",
+                    ttl: 600
+                }),
+                wild: setMultipleGoDaddyRecords({
+                    apiKey: this._config.apikey,
+                    secret: this._config.secret,
+                    domain: foundDomain.domain,
+                    name: "*",
+                    values: ips,
+                    type: "A",
+                    ttl: 600
+                })
+            });
         }
         return setMultipleGoDaddyRecords({
             apiKey: this._config.apikey,
             secret: this._config.secret,
             domain: foundDomain.domain,
-            name: foundDomain.name,
+            name: foundDomain.isRoot ? "@" : foundDomain.name,
             values: ips,
             type: "A",
             ttl: 600
@@ -133,14 +141,33 @@ var GoDaddyDNSPlugin = /** @class */ (function () {
         }
         //console.log(args, domain, challenge)
         console.log("Looking for " + host + " and found " + foundDomain.name + " with domain " + foundDomain.domain);
-        if (foundDomain.name === foundDomain.domain) {
-            foundDomain.name = "@";
+        if (foundDomain.isRoot && foundDomain.isWildcard) {
+            return Promise.props({
+                root: setMultipleGoDaddyRecords({
+                    apiKey: this._config.apikey,
+                    secret: this._config.secret,
+                    domain: foundDomain.domain,
+                    name: "@",
+                    values: ips,
+                    type: "AAAA",
+                    ttl: 600
+                }),
+                wild: setMultipleGoDaddyRecords({
+                    apiKey: this._config.apikey,
+                    secret: this._config.secret,
+                    domain: foundDomain.domain,
+                    name: "*",
+                    values: ips,
+                    type: "AAAA",
+                    ttl: 600
+                })
+            });
         }
         return setMultipleGoDaddyRecords({
             apiKey: this._config.apikey,
             secret: this._config.secret,
             domain: foundDomain.domain,
-            name: foundDomain.name,
+            name: foundDomain.isRoot ? "@" : foundDomain.name,
             values: ips,
             type: "AAAA",
             ttl: 600

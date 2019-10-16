@@ -5,8 +5,6 @@ import * as program from "commander"
 import {Wildcert} from "./Wildcert";
 import {WildcertConfig} from "./WildcertConfig";
 
-
-
 //the wildcert cli class is the entry point for the command line interface and will process the supplied options...
 export class WildcertCLI {
 
