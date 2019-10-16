@@ -3,6 +3,16 @@ WildCert
 
 WildCert is a wrapper for [Greenlock](https://git.coolaj86.com/coolaj86/greenlock.js) that supports the automatic requesting of wilcard certificates from LetsEncrypt by automatically updating DNS and using the DNS authorisation challenge.
 
+Greenlock / Acme.js Warning
+===========================
+Let’s Encrypt will STOP WORKING with Greenlock and ACME.js at the end of Oct 2019. WITHOUT YOUR HELP we won’t get the next release out in time.
+
+If Greenlock (or ACME.js) has saved you time and money, and taken stress out of your life, or you just love it, please reach out to return the favor today:
+
+SAVE GREENLOCK / ACME.js: [https://indiegogo.com/at/greenlock](https://indiegogo.com/at/greenlock)
+
+It is unclear at this time if the breaking changes will effect Wildcert.
+
 Prerequisites
 =============
 
@@ -19,7 +29,9 @@ To install WildCert simply run the following command on your server:
 DNS Plugins
 ===========
 
-At the moment only GoDaddy is supported for automatic wildcard certificate generation.
+The following providers are supported for automatic DNS updates. You will likely need to generate API keys in order to use one of these plugins. 
+- Godaddy : [Example](https://github.com/spuddleziz/wildcert/blob/master/examples/godaddy.json)
+- OVH : [Example](https://github.com/spuddleziz/wildcert/blob/master/examples/ovh.json)
 
 Server Plugins
 ==============
@@ -76,7 +88,10 @@ Configuration Files
     "config": {
        "apikey": "", //The GoDaddy API key
        "secret": ""  //The GoDaddy API Secret
-    }
+    },
+    "setIP": true, //if set the DNS plugin will automatically set the A and AAAA records for the appropriate domains
+    "ip4List": [/*An array of IPV4 addresses to set*/],
+    "ip6List": [/*An array of IPV6 addresses to set*/]
   },
   "server": {
     "plugin": "haproxy",  //The WildCert webserver management plugin to use 

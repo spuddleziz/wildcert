@@ -139,7 +139,7 @@ export default class OVHDNSPlugin implements IDNSPlugin
 
             return new Promise((outerRes,outerRej) => {
                 let found = false;
-                Promise.each(subdomainQueryArr,(curSubdomain) => {
+                Promise.each<string>(subdomainQueryArr,(curSubdomain) => {
                     if(found) return; //Flow control, ignore anything but the first found NS result which will be best authorative
                     else
                     {
@@ -168,8 +168,8 @@ export default class OVHDNSPlugin implements IDNSPlugin
                 return lookupIPs(nsHostnames).then<any>((nsIPs:string[]) => {
                     //Make sure the auth NS has the expected challenge
                     let uniqueNSIPs:string[] = [];
-                    nsIPs.map((ip:string) => {
-                        if(!uniqueNSIPs.includes(ip)) uniqueNSIPs.push(ip);
+                    nsIPs.forEach((ip:string) => {
+                        if(uniqueNSIPs.indexOf(ip) === -1) uniqueNSIPs.push(ip);
                     });
                     console.log("[ovh] Found unique NS IPs",uniqueNSIPs);
                     return checkAuthoritativeServerDNSRecord(uniqueNSIPs, "TXT", foundDomain.acmePath + "." + foundDomain.domain, keyAuthDigest, 10 * 60 * 1000);

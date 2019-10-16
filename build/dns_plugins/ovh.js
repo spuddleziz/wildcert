@@ -121,8 +121,8 @@ var OVHDNSPlugin = /** @class */ (function () {
                 return utils_1.lookupIPs(nsHostnames).then(function (nsIPs) {
                     //Make sure the auth NS has the expected challenge
                     var uniqueNSIPs = [];
-                    nsIPs.map(function (ip) {
-                        if (!uniqueNSIPs.includes(ip))
+                    nsIPs.forEach(function (ip) {
+                        if (uniqueNSIPs.indexOf(ip) === -1)
                             uniqueNSIPs.push(ip);
                     });
                     console.log("[ovh] Found unique NS IPs", uniqueNSIPs);
