@@ -146,7 +146,12 @@ export function checkAuthoritativeServerDNSRecord(dnsServers:string[], recordTyp
 
           if (res && Array.isArray(res) && res.length > 0) {
 
-            return resolve(res[0]);
+            //It's possible that there could have multiple records returned
+            for(var i = 0; i < res.length; i++)
+            {
+              if(res[i] == expectedValue) return resolve(res[i]);
+            }
+            return reject(new Error("Couldn't find expected value"))
 
           }
 
@@ -160,11 +165,12 @@ export function checkAuthoritativeServerDNSRecord(dnsServers:string[], recordTyp
 
     return processLoop(() => {
 
-      return doAsyncResolve(hostname, recordType);
+        return doAsyncResolve(hostname, recordType);
 
     }, (results) => {
 
       //look at the results and see if the value is correct
+      console.log(`[resolver] Returned these values`,results);
 
       if (new Date().getTime() >= timeoutTime) {
 

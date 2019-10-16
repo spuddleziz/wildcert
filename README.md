@@ -24,7 +24,7 @@ At the moment only GoDaddy is supported for automatic wildcard certificate gener
 Server Plugins
 ==============
 
-After a successful  certificate gernation/renewal WildCert can reload the web server for you.
+After a successful certificate gernation/renewal WildCert can reload the web server for you.
 
 At the moment only HaProxy is supported support for Nginx and Apache is planned. 
 

@@ -1,5 +1,6 @@
 var request = require('request-promise');
 import IDNSPlugin from "./interface";
+import * as _ from "lodash";
 import { readlink } from "fs";
 import {
     ACME_RECORD_PREFIX, checkAuthoritativeServerDNSRecord,
@@ -16,6 +17,7 @@ import {
     OVHConfig,
     AuthToken
  } from "../types";
+import { lookup } from "dns";
 
 
 export default class OVHDNSPlugin implements IDNSPlugin
@@ -55,7 +57,6 @@ export default class OVHDNSPlugin implements IDNSPlugin
     }
 
     set(args: any, domain: string, challenge: string, keyAuthorisation: string, cb: (err?:Error) => {}) {
-        let isRoot = false;
         let foundDomain = getDomainAndNameFromMap(this._domainMap, domain);
         if(!foundDomain || !foundDomain.domain || !foundDomain.name )
         {
@@ -66,13 +67,20 @@ export default class OVHDNSPlugin implements IDNSPlugin
         let acmePath = "";
         if (foundDomain.name === foundDomain.domain) {
             acmePath = ACME_RECORD_PREFIX;
-            isRoot = true;
         } else {
-            acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name;
+            if(foundDomain.name == "*")
+            {
+                acmePath = ACME_RECORD_PREFIX;
+            }
+            else
+            {
+                acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name;
+
+            }
         }
 
         let keyAuthDigest = makeChallengeKeyAuthDigest(keyAuthorisation);
-        this.setRecord(foundDomain.domain,"TXT",acmePath,keyAuthDigest,600)
+        return this.setRecord(foundDomain.domain,"TXT",acmePath,keyAuthDigest,600)
         .then(() => {
             //We need to makesure the TXT record has populated
             //To do this, we need to find the authorative NS for the domain
@@ -91,34 +99,57 @@ export default class OVHDNSPlugin implements IDNSPlugin
             return new Promise((outerRes,outerRej) => {
                 let found = false;
                 Promise.each(subdomainQueryArr,(curSubdomain) => {
-                    if(found) return //Flow control, ignore anything but the first found NS result which will be best authorative
+                    if(found) return; //Flow control, ignore anything but the first found NS result which will be best authorative
                     else
                     {
-                        this.getRecord(foundDomain.domain,"NS",curSubdomain)
+                        return this.getRecord(foundDomain.domain,"NS",curSubdomain)
                         .then((records:OVHZoneRecord[]) => {
                             console.log(`[ovh] Info: Queried "${curSubdomain}" on ${foundDomain.domain} and found`,records);
                             found = true; //No more queries
                             outerRes(records);
                         })
                         .catch((err:OVHError) => {
-                            console.log(`[ovh] Info: Queried "${curSubdomain}" on ${foundDomain.domain} and received an error`,err);
+                            if(err == undefined)
+                            {
+                                console.log(`[ovh] Info: Queried "${curSubdomain}" on ${foundDomain.domain} and received an (expected) empty response`);
+                            }
+                            else
+                            {
+                                console.log(`[ovh] Unexpected format encountered during auth NS search`,err);
+                            }
                             return; //Don't require catch, kind of expected
                         });
                     }
                 });
-                if(!found) outerRej(new Error(`Failed to find authorative NS for ${domain}`));
             })
             .then((records:OVHZoneRecord[]) => {
-                console.log("[ovh] Most Authorative",records);
+                let nsHostnames = _.map(records,"target");
+                return lookupIPs(nsHostnames).then<any>((nsIPs:string[]) => {
+                    //Make sure the auth NS has the expected challenge
+                    let uniqueNSIPs:string[] = [];
+                    nsIPs.map((ip:string) => {
+                        if(!uniqueNSIPs.includes(ip)) uniqueNSIPs.push(ip);
+                    });
+                    console.log("[ovh] Found unique NS IPs",uniqueNSIPs);
+                    return checkAuthoritativeServerDNSRecord(uniqueNSIPs, "TXT", acmePath + "." + foundDomain.domain, keyAuthDigest, 10 * 60 * 1000);
+                })
             })
-            .catch(() => {
-                console.log(`[ovh] Unable to find NS servers for ${domain}`);
+            .catch((error:any) => {
+                console.log(`[ovh] An error occurred while resolving auth ns`,error);
+                return;
             });
         })
         .then(() =>{
-            cb();
+            console.log(`[ovh] Authed ns has the expected records, waiting 5 seconds`);
+            return Promise.delay(5000).then(() => {
+                console.log(`[ovh] Sending callback`);
+                cb(null);
+            });
         })
-        .catch((err) => cb(err));
+        .catch((err) => {
+            console.log(`[ovh] Couldn't find the expected TXT record`);
+            cb(err)
+        });
     }
     
     get(args: any, domain: string, challenge: any, cb: any) {
@@ -129,7 +160,7 @@ export default class OVHDNSPlugin implements IDNSPlugin
         console.log(`Removing record from ${domain} on OVH`);
         let foundDomain = getDomainAndNameFromMap(this._domainMap, domain);
         if (!foundDomain || !foundDomain.name || !foundDomain.domain) {
-            return cb(new Error(`The requested domain ${domain} is not available in the godaddy instance configured`));
+            return cb(new Error(`[ovh] The requested domain ${domain} is not available in the godaddy instance configured`));
         }
         let acmePath = "";
         if (foundDomain.name === foundDomain.domain) {
@@ -139,7 +170,7 @@ export default class OVHDNSPlugin implements IDNSPlugin
         }
         this.removeRecord(domain,"TXT",acmePath)
         .then(() => cb())
-        .catch((err:any) => cb(err));
+        .catch((err:any) => cb(new Error("[ovh]" + err)));
     }
 
     setIPv4(host: string, ips: string[]):Promise<any> {
@@ -176,11 +207,7 @@ export default class OVHDNSPlugin implements IDNSPlugin
     }
 
     setRecord(domain: string, type: string, name: string, value: string, ttl: number) : Promise<any> {
-        if(name == domain)
-        {
-            //When using OVH, the provided name is a subdomain and therefore should simply be blank when it's for the current domain
-            name = '';
-        }
+        if(name == domain) name = ""; //The root domain. This is required because OVH expects root domain records to have a blank name
         console.log(`[ovh] Adding a new ${type} record for ${domain} with the name ${name} with destination ${value} and TTL ${ttl}`);
         return this._ovh.requestPromised('POST',`/domain/zone/${domain}/record`,{
             fieldType: type,
@@ -222,7 +249,7 @@ export default class OVHDNSPlugin implements IDNSPlugin
             }
         })
         .catch((err:OVHError) => {
-            return Promise.reject(`[ovh] Error while getting DNS Zone`,err);
+            return Promise.reject(`[ovh] Error while getting DNS Zone ${err.message}`);
         })
     }
 
