@@ -99,6 +99,9 @@ export class WildcertConfig {
 
     delete robj.production;
 
+    robj.skipDryRun = true;
+    robj.skipChallengeTest = true;
+
     //now set the renewal points...
 
     robj.renewWithin = this.getRenewWithin();

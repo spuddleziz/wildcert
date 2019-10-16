@@ -7,7 +7,8 @@ import {
     getDomainAndNameFromMap, lookupIPs,
     makeChallengeKeyAuthDigest,
     putDomainInMap,
-    validateDNSRecordType
+    validateDNSRecordType,
+    FoundDomainAndName
 } from "./utils";
 import * as Promise from "bluebird";
 import { 
@@ -18,7 +19,59 @@ import {
     AuthToken
  } from "../types";
 import { lookup } from "dns";
+import { Z_RLE } from "zlib";
 
+declare type NonTypedDNSRecord = {
+    target: string,
+    value: string
+}
+
+
+function cleanupOvh(inputRecords:OVHZoneRecord[], ips:string[], subDomain:string):{
+    idsToRemove:string[];
+    createArr:{subDomain:string, target:string}[]
+} {
+
+
+    let removeMap:{[key:string]:boolean} = {};
+    let createArr:{subDomain:string, target:string}[] = [];
+    let existsMap:{[key:string]:{id:number,target:string}} = {};
+
+    inputRecords.forEach((item) => {
+        let target = `${item.subdomain}::${item.target}`;
+        if (!existsMap.hasOwnProperty(target)) {
+            existsMap[target] = {id:item.id, target: item.target};
+        } else {
+            removeMap[`${item.id}`] = true;
+        }
+    });
+
+    ips.forEach((ip) => {
+        let target = `${subDomain}::${ip}`;
+        if (!existsMap.hasOwnProperty(target)) {
+            existsMap[target] = {id: 0, target: ip};
+            createArr.push({subDomain: subDomain, target: ip});
+        } else {
+            if (existsMap[target].target === ip) {
+                //the ip is already correctly set - no action needed
+            } else {
+                removeMap[`${existsMap[target].id}`] = true;
+                createArr.push({subDomain: subDomain, target: ip});
+            }
+        }
+    });
+
+    //ids to remove:
+
+    let idsToRemove = Object.keys(removeMap);
+
+    return {
+        idsToRemove,
+        createArr
+    }
+
+
+}   
 
 export default class OVHDNSPlugin implements IDNSPlugin
 {
@@ -62,25 +115,13 @@ export default class OVHDNSPlugin implements IDNSPlugin
         {
             return cb(new Error(`The requested domain ${domain} is not available in the ovh instance configured`));
         }
-        console.log(`Looking for ${domain} and found ${foundDomain.name} with domain ${foundDomain.domain}`);
+        console.log(`Looking for ${domain} and found ${foundDomain.name} with domain ${foundDomain.domain}`);      
 
-        let acmePath = "";
-        if (foundDomain.name === foundDomain.domain) {
-            acmePath = ACME_RECORD_PREFIX;
-        } else {
-            if(foundDomain.name == "*")
-            {
-                acmePath = ACME_RECORD_PREFIX;
-            }
-            else
-            {
-                acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name;
-
-            }
-        }
-
+        //Required for greenlock to properly issue the certificate
+        args.challenge.isWildcard = foundDomain.isWildcard ? true : false;
+        args.acmePrefix = foundDomain.acmePath + "." + foundDomain.domain;
         let keyAuthDigest = makeChallengeKeyAuthDigest(keyAuthorisation);
-        return this.setRecord(foundDomain.domain,"TXT",acmePath,keyAuthDigest,600)
+        return this.setRecord(foundDomain.domain,"TXT",foundDomain.acmePath,keyAuthDigest,600)
         .then(() => {
             //We need to makesure the TXT record has populated
             //To do this, we need to find the authorative NS for the domain
@@ -131,7 +172,7 @@ export default class OVHDNSPlugin implements IDNSPlugin
                         if(!uniqueNSIPs.includes(ip)) uniqueNSIPs.push(ip);
                     });
                     console.log("[ovh] Found unique NS IPs",uniqueNSIPs);
-                    return checkAuthoritativeServerDNSRecord(uniqueNSIPs, "TXT", acmePath + "." + foundDomain.domain, keyAuthDigest, 10 * 60 * 1000);
+                    return checkAuthoritativeServerDNSRecord(uniqueNSIPs, "TXT", foundDomain.acmePath + "." + foundDomain.domain, keyAuthDigest, 10 * 60 * 1000);
                 })
             })
             .catch((error:any) => {
@@ -160,15 +201,12 @@ export default class OVHDNSPlugin implements IDNSPlugin
         console.log(`Removing record from ${domain} on OVH`);
         let foundDomain = getDomainAndNameFromMap(this._domainMap, domain);
         if (!foundDomain || !foundDomain.name || !foundDomain.domain) {
-            return cb(new Error(`[ovh] The requested domain ${domain} is not available in the godaddy instance configured`));
+            return cb(new Error(`[ovh] The requested domain ${domain} is not available in the OVH instance configured`));
         }
-        let acmePath = "";
-        if (foundDomain.name === foundDomain.domain) {
-            acmePath = ACME_RECORD_PREFIX;
-        } else {
-            acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name;
-        }
-        this.removeRecord(domain,"TXT",acmePath)
+        //Required for greenlock to properly issue the certificate
+        args.challenge.isWildcard = foundDomain.isWildcard ? true : false;
+        args.acmePrefix = foundDomain.acmePath + "." + foundDomain.domain;
+        this.removeRecord(domain,"TXT",foundDomain.acmePath)
         .then(() => cb())
         .catch((err:any) => cb(new Error("[ovh]" + err)));
     }
@@ -178,17 +216,35 @@ export default class OVHDNSPlugin implements IDNSPlugin
         let foundDomain = getDomainAndNameFromMap(this._domainMap, host);
         if (!foundDomain || !foundDomain.name || !foundDomain.domain) {
             console.log(`[ovh] The requested domain is not available`)
-            return Promise.reject(new Error(`The requested domain ${host} is not available in the ovh instance configured`));
+            return Promise.reject(new Error(`The requested domain ${host} is not available in the OVH instance configured`));
         }
         
         console.log(`Looking for ${host} and found ${foundDomain.name} with domain ${foundDomain.domain}`);
-        
-        //Queue the OVH requests for all IPs
-        let multiReq = ips.map((ip: string) => {
-            this.setRecord(foundDomain.domain,"A",foundDomain.name,ip,600);
-        });
-        return Promise.all(multiReq); //Return a promise which completes when all OVH requests are done
-        
+
+        let subsToCreate:string[] = [];
+        if(foundDomain.isRoot){
+            subsToCreate.push(""); //Root on OVH is just ""
+            if(foundDomain.isWildcard) subsToCreate.push("*");
+        } 
+        else{
+            subsToCreate.push(foundDomain.name);
+        }
+        return Promise.all(subsToCreate.map((sub) => {
+            return this.getRecord(foundDomain.domain,"A",sub)
+            .then((records) => {
+                let todo = cleanupOvh(records,ips,sub);
+                return this.removeRecordsByID(todo.idsToRemove,foundDomain.domain).then(() => {
+                    return Promise.all(todo.createArr.map((item) => {
+                        return this.setRecord(foundDomain.domain,"A",item.subDomain,item.target,600);
+                    }));
+                });
+            })
+            .catch((e) => 
+            {
+                console.log(e);
+                return Promise.reject(new Error(`[ovh] An error occurred while cleaning up records for ${sub} on ${foundDomain.domain}`))
+            });
+        }));
     }
 
     setIPv6(host: string, ips: string[]) : Promise<any> {
@@ -199,11 +255,31 @@ export default class OVHDNSPlugin implements IDNSPlugin
         
         console.log(`Looking for ${host} and found ${foundDomain.name} with domain ${foundDomain.domain}`);
         
-        //Queue the OVh requests for all IPs
-        let multiReq = ips.map((ip: string) => {
-            this.setRecord(foundDomain.domain,"AAAA",foundDomain.name,ip,600);
-        });
-        return Promise.all(multiReq); //Return a promise which completes when all OVH requests are done
+        let subsToCreate:string[] = [];
+        if(foundDomain.isRoot){
+            subsToCreate.push(""); //Root on OVH is just ""
+            if(foundDomain.isWildcard) subsToCreate.push("*");
+        } 
+        else{
+            subsToCreate.push(foundDomain.name);
+        }
+        
+        return Promise.all(subsToCreate.map((sub) => {
+            return this.getRecord(foundDomain.domain,"AAAA",sub)
+            .then((records) => {
+                let todo = cleanupOvh(records,ips,sub);
+                return this.removeRecordsByID(todo.idsToRemove,foundDomain.domain).then(() => {
+                    return Promise.all(todo.createArr.map((item) => {
+                        return this.setRecord(foundDomain.domain,"AAAA",item.subDomain,item.target,600);
+                    }));
+                });
+            })
+            .catch((e) => 
+            {
+                console.log(e);
+                return Promise.reject(new Error(`[ovh] An error occurred while cleaning up records for ${sub} on ${foundDomain.domain}`))
+            });
+        }));
     }
 
     setRecord(domain: string, type: string, name: string, value: string, ttl: number) : Promise<any> {
@@ -249,8 +325,29 @@ export default class OVHDNSPlugin implements IDNSPlugin
             }
         })
         .catch((err:OVHError) => {
+            console.log(err);
             return Promise.reject(`[ovh] Error while getting DNS Zone ${err.message}`);
         })
+    }
+
+    removeRecordsByID(ids:string[],domain:string) : Promise<any>
+    {
+        let promArr = ids.map((id) => {
+            return this.removeRecordByID.call(this,parseInt(id),domain);
+        });
+        return Promise.all(promArr);
+    }
+
+    removeRecordByID(id:number,domain:string) : Promise<void>
+    {
+        return this._ovh.requestPromised('DELETE',`/domain/zone/${domain}/record/${id}`)
+            .then(() => {
+                console.log(`[ovh] Removed ${id} record from ${domain}`)
+                return this.applyDNSChanges;
+            })
+            .catch((err:OVHError) => {
+                return Promise.reject(`[ovh] Error: Failed to delete record ID ${id} from zone ${domain}`);
+            });
     }
 
     removeRecord(domain: string, type: string, name: string): Promise<any> {

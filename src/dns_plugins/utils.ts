@@ -49,6 +49,9 @@ export function putDomainInMap(domainMap: DomainMap, domainToAdd: string): void 
 export interface FoundDomainAndName {
   domain:string
   name:string
+  isRoot:boolean
+  isWildcard:boolean
+  acmePath:string
 }
 
 export function getDomainAndNameFromMap(domainMap:DomainMap , requestDomain:string):FoundDomainAndName {
@@ -71,18 +74,62 @@ export function getDomainAndNameFromMap(domainMap:DomainMap , requestDomain:stri
 
     if (picked && typeof picked === "string") {
 
-      return {
+      picked = picked.toLowerCase();
+      requestDomain = requestDomain.toLowerCase();
+      let isRoot = false;
+      let name = "";
+      if (picked === requestDomain) {
+        isRoot = true;
+      } else {
+        name = requestDomain.replace("." + picked, "");
+      }
+
+      return getAcmePathForDomain({
 
         domain: picked,
-        name : requestDomain.replace("." + picked, "")
+        name : name,
+        isRoot : isRoot,
+        acmePath : "",
+        isWildcard : false
 
-      }
+      }, requestDomain);
 
     }
 
   }
 
   return null;
+
+}
+
+function getAcmePathForDomain(foundDomain:FoundDomainAndName, requestDomain:string):FoundDomainAndName {
+
+  if (foundDomain.isRoot && (!foundDomain.name || foundDomain.name === "")) {
+    foundDomain.acmePath = ACME_RECORD_PREFIX;
+  } else {
+
+    //handle the wildcard...
+    if (foundDomain.name[0] === "*") {
+      if (foundDomain.name.length > 1 && foundDomain.name[1] === ".") {
+        //fine
+        foundDomain.isWildcard = true;
+        foundDomain.acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name.slice(2);
+      } else if (foundDomain.name.length === 1) {
+        //fine
+        foundDomain.isWildcard = true;
+        foundDomain.acmePath = ACME_RECORD_PREFIX;
+        foundDomain.isRoot = true;
+      } else {
+        //throw
+      }
+    } else {
+      //standard
+      foundDomain.acmePath = ACME_RECORD_PREFIX + "." + foundDomain.name;
+    }
+
+  }
+
+  return foundDomain;
 
 }
 
