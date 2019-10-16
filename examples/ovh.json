@@ -1,5 +1,5 @@
 {
-    "domains": ["*.firebasealpha.co"], 
+    "domains": ["*.example.com"], 
     //request multiple wilcard certificates in one request on one certificate. 
     //Both domains must be managed by the same DNS provider.
     
@@ -43,6 +43,7 @@
             "appkey": "jEZbdhjRj23M6JOg", 
             "appSecret": "o9rLoK7iZoMl8KEw4NRuomTIfsAObkq0",
             "endpoint": "ovh-eu"
+            //consumerKey:
         }
     },
     "server": {
