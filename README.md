@@ -31,7 +31,7 @@ DNS Plugins
 
 The following providers are supported for automatic DNS updates. You will likely need to generate API keys in order to use one of these plugins. 
 - Godaddy : [Example](https://github.com/spuddleziz/wildcert/blob/master/examples/godaddy.json)
-- OVH : [Example](https://github.com/spuddleziz/wildcert/blob/master/examples/ovh.json)
+- OVH : [Example](https://github.com/spuddleziz/wildcert/blob/master/examples/ovh.json) [Configuration](https://github.com/spuddleziz/wildcert/blob/master/OVHREADME.md)
 
 Server Plugins
 ==============
