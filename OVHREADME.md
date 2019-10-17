@@ -1,4 +1,5 @@
-== Configuration
+Configuration
+==============
 Within the configuration file you assign to wildcert, you will need to configure OVH's connection just like other plugins. There are some specific parameters for OVH.
 ```
 {
@@ -8,7 +9,8 @@ Within the configuration file you assign to wildcert, you will need to configure
     endpoint: //There's a few different OVH endpoints which can be used depending on your locality. See the available endpoints below
 }
 ```
-== OVH Endpoints
+OVH Endpoints
+==============
 The plugin uses the [OVH node project](https://github.com/ovh/node-ovh). At present the supported endpoints are as follows:
 
 OVH Europe: ovh-eu (default)
@@ -20,7 +22,8 @@ SoYouStart North-America: soyoustart-ca
 Kimsufi Europe: kimsufi-eu
 Kimsufi North-America: kimsufi-ca
 
-== Getting and Authenticating the consumerKey
+Getting and Authenticating the consumerKey
+==============
 1. Run the following in your terminal if you reside in the EU. The URL might differ depending on your location although this is untested:
 ```
 curl -X POST -H "Content-Type: application/json" -H "X-Ovh-Application:Nr5oddsUpxCi9IEi" -d '{"accessRules": [{"method": "GET","path": "/domain"},{"method": "GET","path": "/domain/zone/*"},{"method": "POST","path": "/domain/zone/*"},{"method": "DELETE","path": "/domain/zone/*"}]}' https://eu.api.ovh.com/1.0/auth/credential
